@@ -1,43 +1,67 @@
 <!DOCTYPE html>
-<html>
+<html lang="es">
 <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Traductor IA</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 </head>
 <body>
 
-<h1>Traductor</h1>
+<main class="app-container">
+    <header class="app-header">
+        <h1>Traductor IA</h1>
+        <p class="subtitle">Traduce texto y genera audio de forma rápida y profesional.</p>
+    </header>
 
-<form method="POST">
-    <select name="origen" id="origen">
-        {% for codigo, info in idiomas.items() %}
-            <option value="{{codigo}}" {% if codigo == origen %}selected{% endif %}>{{info['name']}}</option>
-        {% endfor %}
-    </select>
+    <section class="card">
+        <form method="POST" class="form">
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="origen">Idioma origen</label>
+                    <select name="origen" id="origen" class="select">
+                        {% for codigo, info in idiomas.items() %}
+                            <option value="{{codigo}}" {% if codigo == origen %}selected{% endif %}>{{info['name']}}</option>
+                        {% endfor %}
+                    </select>
+                </div>
 
-    <select name="destino" id="destino">
-        {% for codigo, info in idiomas.items() %}
-            <option value="{{codigo}}" {% if codigo == destino %}selected{% endif %}>{{info['name']}}</option>
-        {% endfor %}
-    </select>
+                <div class="form-group">
+                    <label for="destino">Idioma destino</label>
+                    <select name="destino" id="destino" class="select">
+                        {% for codigo, info in idiomas.items() %}
+                            <option value="{{codigo}}" {% if codigo == destino %}selected{% endif %}>{{info['name']}}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
 
-    <br><br>
+            <div class="form-group">
+                <label for="texto">Texto</label>
+                <textarea name="texto" id="texto" rows="5" class="textarea">{{texto}}</textarea>
+            </div>
 
-    <textarea name="texto" id="texto" rows="5" cols="40">{{texto}}</textarea>
+            <div class="form-actions">
+                <button type="button" id="recordBtn" class="btn btn-secondary">🎙️ Grabar voz</button>
+                <span id="recordStatus" class="status">(Pulsa para dictar)</span>
+                <button type="submit" class="btn btn-primary">Traducir</button>
+            </div>
+        </form>
+    </section>
 
-    <br><br>
+    <section class="card output">
+        <h2>Resultado</h2>
+        <p id="resultado" class="output-text">{{resultado}}</p>
+        <div class="output-actions">
+            <button type="button" id="speakBtn" class="btn btn-secondary">🔊 Escuchar</button>
+            <span id="speakStatus" class="status"></span>
+        </div>
+    </section>
 
-    <button type="button" id="recordBtn">🎙️ Grabar voz</button>
-    <span id="recordStatus" style="margin-left: 0.5rem; font-style: italic;">(Pulsa para dictar)</span>
-
-    <br><br>
-
-    <button type="submit">Traducir</button>
-</form>
-
-<h2>Resultado:</h2>
-<p id="resultado">{{resultado}}</p>
-<button type="button" id="speakBtn">🔊 Escuchar</button>
-<span id="speakStatus" style="margin-left: 0.5rem; font-style: italic;"></span>
+    <footer class="app-footer">
+        <small>Construido con Flask + Azure Cognitive Services.</small>
+    </footer>
+</main>
 
 <script>
 (function() {
