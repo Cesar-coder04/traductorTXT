@@ -21,13 +21,17 @@ def texto_a_audio(texto, idioma="es-ES"):
     Este método usa la funcionalidad de síntesis de voz local del SDK y devuelve
     la razón del resultado (por ejemplo, si se completó con éxito).
     """
-    speech_config = speechsdk.SpeechConfig(subscription=CLAVE_SPEECH, region=REGION_SPEECH)
-    speech_config.speech_synthesis_language = idioma
+    try:
+        speech_config = speechsdk.SpeechConfig(subscription=CLAVE_SPEECH, region=REGION_SPEECH)
+        speech_config.speech_synthesis_language = idioma
 
-    synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config)
-    result = synthesizer.speak_text_async(texto).get()
+        synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config)
+        result = synthesizer.speak_text_async(texto).get()
 
-    return result.reason
+        return result.reason
+    except Exception as exc:
+        # En producción, usar logging y no exponer detalles internos.
+        raise RuntimeError(f"Error al sintetizar audio: {exc}") from exc
 
 
 def texto_a_audio_bytes(texto, idioma="es-ES"):
@@ -36,20 +40,23 @@ def texto_a_audio_bytes(texto, idioma="es-ES"):
     Este método se usa para crear un archivo de audio que pueda enviarse al
     navegador y reproducirse desde JS.
     """
-    speech_config = speechsdk.SpeechConfig(subscription=CLAVE_SPEECH, region=REGION_SPEECH)
-    speech_config.speech_synthesis_language = idioma
-    # Usar un formato WAV común para que sea reproducible en todos los navegadores.
-    speech_config.set_speech_synthesis_output_format(
-        speechsdk.SpeechSynthesisOutputFormat.Riff16Khz16BitMonoPcm
-    )
+    try:
+        speech_config = speechsdk.SpeechConfig(subscription=CLAVE_SPEECH, region=REGION_SPEECH)
+        speech_config.speech_synthesis_language = idioma
+        # Usar un formato WAV común para que sea reproducible en todos los navegadores.
+        speech_config.set_speech_synthesis_output_format(
+            speechsdk.SpeechSynthesisOutputFormat.Riff16Khz16BitMonoPcm
+        )
 
-    synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config)
-    result = synthesizer.speak_text_async(texto).get()
+        synthesizer = speechsdk.SpeechSynthesizer(speech_config=speech_config)
+        result = synthesizer.speak_text_async(texto).get()
 
-    if result.reason != speechsdk.ResultReason.SynthesizingAudioCompleted:
-        raise RuntimeError(f"TTS failed: {result.reason}")
+        if result.reason != speechsdk.ResultReason.SynthesizingAudioCompleted:
+            raise RuntimeError(f"TTS failed: {result.reason}")
 
-    stream = speechsdk.AudioDataStream(result)
+        stream = speechsdk.AudioDataStream(result)
+    except Exception as exc:
+        raise RuntimeError(f"Error generando audio: {exc}") from exc
 
     # Guardar en un archivo temporal, leerlo como bytes y borrar el temporal.
     with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tmp_file:
@@ -71,10 +78,23 @@ def audio_a_texto(idioma="es-ES"):
     Este método realiza una única captura de voz (no es un stream continuo)
     y devuelve el texto reconocido por Azure.
     """
-    speech_config = speechsdk.SpeechConfig(subscription=CLAVE_SPEECH, region=REGION_SPEECH)
-    speech_config.speech_recognition_language = idioma
+    try:
+        speech_config = speechsdk.SpeechConfig(subscription=CLAVE_SPEECH, region=REGION_SPEECH)
+        speech_config.speech_recognition_language = idioma
 
-    recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config)
-    result = recognizer.recognize_once()
+        recognizer = speechsdk.SpeechRecognizer(speech_config=speech_config)
+        result = recognizer.recognize_once()
 
-    return result.text
+        if result.reason == speechsdk.ResultReason.RecognizedSpeech:
+            return result.text
+
+        if result.reason == speechsdk.ResultReason.NoMatch:
+            raise RuntimeError("No se reconoció voz. Intenta de nuevo.")
+
+        if result.reason == speechsdk.ResultReason.Canceled:
+            cancellation = speechsdk.CancellationDetails.from_result(result)
+            raise RuntimeError(f"Reconocimiento cancelado: {cancellation.reason} - {cancellation.error_details}")
+
+        raise RuntimeError(f"Resultado inesperado del reconocimiento: {result.reason}")
+    except Exception as exc:
+        raise RuntimeError(f"Error al reconocer voz: {exc}") from exc

@@ -6,7 +6,7 @@ Esta aplicación usa Flask para servir una UI simple que permite:
 - generar audio en WAV desde texto usando Azure Speech y reproducirlo en el navegador
 """
 
-from flask import Flask, render_template, request, send_file
+from flask import Flask, render_template, request, send_file, jsonify
 from translator import traducir_texto, obtener_idiomas
 from speech import texto_a_audio, texto_a_audio_bytes, audio_a_texto
 
@@ -23,7 +23,12 @@ def index():
     """
 
     # Lista de idiomas soportados por el traductor (obtenida de la API de Azure).
-    idiomas = obtener_idiomas()
+    try:
+        idiomas = obtener_idiomas()
+    except Exception as exc:
+        # En un proyecto real, sería mejor usar logging en lugar de print.
+        print(f"[app] Error al obtener idiomas: {exc}")
+        idiomas = {}
 
     resultado = ""
     texto = ""
@@ -37,7 +42,11 @@ def index():
         destino = request.form.get("destino", destino)
 
         # Llamada a la API de traducción.
-        resultado = traducir_texto(texto, origen, destino)
+        try:
+            resultado = traducir_texto(texto, origen, destino)
+        except Exception as exc:
+            print(f"[app] Error en traducción: {exc}")
+            resultado = f"Error al traducir: {exc}"
 
     return render_template(
         "index.html",
@@ -54,9 +63,14 @@ def audio():
 
     Este endpoint se puede usar desde el frontend para obtener texto dictado.
     """
-    idioma = request.form["idioma"]
-    texto = audio_a_texto(idioma)
-    return {"texto": texto}
+    idioma = request.form.get("idioma", "es-ES")
+
+    try:
+        texto = audio_a_texto(idioma)
+        return {"texto": texto}
+    except Exception as exc:
+        print(f"[app] Error al convertir audio a texto: {exc}")
+        return jsonify({"error": str(exc)}), 500
 
 @app.route("/tts", methods=["POST"])
 def tts():
@@ -68,8 +82,15 @@ def tts():
     texto = request.form.get("texto", "")
     idioma = request.form.get("idioma", "es-ES")
 
-    audio_bytes = texto_a_audio_bytes(texto, idioma)
-    return send_file(io.BytesIO(audio_bytes), mimetype="audio/wav")
+    if not texto.strip():
+        return jsonify({"error": "No se proporcionó texto para convertir a audio."}), 400
+
+    try:
+        audio_bytes = texto_a_audio_bytes(texto, idioma)
+        return send_file(io.BytesIO(audio_bytes), mimetype="audio/wav")
+    except Exception as exc:
+        print(f"[app] Error al generar audio: {exc}")
+        return jsonify({"error": str(exc)}), 500
 
 
 if __name__ == "__main__":

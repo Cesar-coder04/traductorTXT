@@ -95,7 +95,59 @@
         status.textContent = msg;
     }
 
-    function startRecognition() {
+    async function checkMicrophonePermission() {
+        // Algunos navegadores (por ejemplo Opera) pueden bloquear el micrófono de forma silenciosa.
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+            updateStatus('Este navegador no permite el acceso al micrófono. Usa Chrome/Edge en escritorio.');
+            recordBtn.disabled = true;
+            return false;
+        }
+
+        // Intentamos validar mediante Permissions API (si está disponible).
+        if (navigator.permissions && navigator.permissions.query) {
+            try {
+                const result = await navigator.permissions.query({ name: 'microphone' });
+                if (result.state === 'denied') {
+                    updateStatus('Permiso de micrófono denegado. Actívalo en la configuración del navegador.');
+                    return false;
+                }
+                // Si está en 'prompt' o 'granted', seguimos al siguiente chequeo.
+            } catch {
+                // Ignorar y continuar al fallback de getUserMedia.
+            }
+        }
+
+        // Fallback: solicitamos el permiso de micrófono directamente (puede mostrar prompt).
+        // Algunos navegadores (incluido Opera) pueden simplemente nunca resolver la promesa.
+        const getUserMediaWithTimeout = (timeoutMs) => {
+            const timeout = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error('timeout')), timeoutMs)
+            );
+            return Promise.race([
+                navigator.mediaDevices.getUserMedia({ audio: true }),
+                timeout,
+            ]);
+        };
+
+        try {
+            const stream = await getUserMediaWithTimeout(5000);
+            stream.getTracks().forEach((track) => track.stop());
+            return true;
+        } catch (err) {
+            const isTimeout = err && err.message === 'timeout';
+            updateStatus(isTimeout
+                ? 'No se pudo acceder al micrófono. El navegador bloquea la solicitud o no responde.'
+                : 'No se pudo acceder al micrófono. Revisa los permisos del navegador.');
+            recordBtn.disabled = true;
+            return false;
+        }
+    }
+
+    async function startRecognition() {
+        updateStatus('Verificando permisos de micrófono...');
+        const hasPermission = await checkMicrophonePermission();
+        if (!hasPermission) return;
+
         recognition = new SpeechRecognition();
         recognition.lang = origenSelect.value || 'es-ES';
         recognition.interimResults = true;
@@ -117,7 +169,13 @@
         };
 
         recognition.onerror = (event) => {
-            updateStatus('Error: ' + (event.error || 'desconocido'));
+            const error = event.error || 'desconocido';
+            if (error === 'not-allowed' || error === 'permission-denied') {
+                updateStatus('Acceso al micrófono denegado. Revise la configuración de permisos del navegador.');
+                recordBtn.disabled = true;
+                return;
+            }
+            updateStatus('Error: ' + error);
         };
 
         recognition.onend = () => {
@@ -193,7 +251,8 @@
             const body = new URLSearchParams({ texto: text, idioma: lang });
             const res = await fetch('/tts', { method: 'POST', body });
             if (!res.ok) {
-                throw new Error('Respuesta del servidor no OK');
+                const json = await res.json().catch(() => null);
+                throw new Error(json?.error || 'Respuesta del servidor no OK');
             }
 
             const blob = await res.blob();

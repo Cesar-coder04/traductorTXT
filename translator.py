@@ -10,6 +10,7 @@ recomiendo leerlas de variables de entorno.
 
 import requests
 import uuid
+from requests.exceptions import RequestException
 
 CLAVE = "2HDx26ckfKhImGGCPmDnlX0LP9pjs8j7EFYA6GB76rxDnberSEEAJQQJ99CCAC5RqLJXJ3w3AAAbACOGixjt"
 REGION = "westeurope"
@@ -19,10 +20,22 @@ def obtener_idiomas():
     """Obtiene el listado de idiomas disponibles para traducción.
 
     Retorna un diccionario con claves de idioma (por ejemplo, 'es', 'en') y datos de cada idioma.
+    En caso de error retorna un diccionario vacío.
     """
     url = f"{ENDPOINT}/languages?api-version=3.0"
-    response = requests.get(url)
-    return response.json()["translation"]
+
+    try:
+        response = requests.get(url, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data.get("translation", {}) or {}
+    except RequestException as exc:
+        # En un proyecto real, usa logging en lugar de print.
+        print(f"[translator] Error al obtener idiomas: {exc}")
+        return {}
+    except ValueError as exc:
+        print(f"[translator] Respuesta inválida de la API de idiomas: {exc}")
+        return {}
 
 def traducir_texto(texto, idioma_origen, idioma_destino):
     """Traduce texto entre dos idiomas usando Azure Translator.
@@ -47,5 +60,12 @@ def traducir_texto(texto, idioma_origen, idioma_destino):
 
     body = [{"text": texto}]
 
-    response = requests.post(url, headers=headers, json=body)
-    return response.json()[0]["translations"][0]["text"]
+    try:
+        response = requests.post(url, headers=headers, json=body, timeout=10)
+        response.raise_for_status()
+        data = response.json()
+        return data[0]["translations"][0]["text"]
+    except RequestException as exc:
+        raise RuntimeError("Error al conectar con el servicio de traducción.") from exc
+    except (KeyError, IndexError, ValueError) as exc:
+        raise RuntimeError("Respuesta inesperada de la API de traducción.") from exc
