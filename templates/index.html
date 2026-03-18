@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Traductor IA</title>
+</head>
+<body>
+
+<h1>Traductor</h1>
+
+<form method="POST">
+    <select name="origen" id="origen">
+        {% for codigo, info in idiomas.items() %}
+            <option value="{{codigo}}" {% if codigo == origen %}selected{% endif %}>{{info['name']}}</option>
+        {% endfor %}
+    </select>
+
+    <select name="destino" id="destino">
+        {% for codigo, info in idiomas.items() %}
+            <option value="{{codigo}}" {% if codigo == destino %}selected{% endif %}>{{info['name']}}</option>
+        {% endfor %}
+    </select>
+
+    <br><br>
+
+    <textarea name="texto" id="texto" rows="5" cols="40">{{texto}}</textarea>
+
+    <br><br>
+
+    <button type="button" id="recordBtn">🎙️ Grabar voz</button>
+    <span id="recordStatus" style="margin-left: 0.5rem; font-style: italic;">(Pulsa para dictar)</span>
+
+    <br><br>
+
+    <button type="submit">Traducir</button>
+</form>
+
+<h2>Resultado:</h2>
+<p id="resultado">{{resultado}}</p>
+<button type="button" id="speakBtn">🔊 Escuchar</button>
+<span id="speakStatus" style="margin-left: 0.5rem; font-style: italic;"></span>
+
+<script>
+(function() {
+    const recordBtn = document.getElementById('recordBtn');
+    const status = document.getElementById('recordStatus');
+    const textoArea = document.getElementById('texto');
+    const origenSelect = document.getElementById('origen');
+    const destinoSelect = document.getElementById('destino');
+    const resultadoP = document.getElementById('resultado');
+    const speakBtn = document.getElementById('speakBtn');
+    const speakStatus = document.getElementById('speakStatus');
+
+    // Disable listen button when no translated result exists
+    speakBtn.disabled = !resultadoP.textContent.trim();
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+        status.textContent = 'Este navegador no soporta reconocimiento de voz. Usa Chrome/Edge en escritorio.';
+        recordBtn.disabled = true;
+        return;
+    }
+
+    let recognition;
+    let listening = false;
+
+    function updateStatus(msg) {
+        status.textContent = msg;
+    }
+
+    function startRecognition() {
+        recognition = new SpeechRecognition();
+        recognition.lang = origenSelect.value || 'es-ES';
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+
+        recognition.onstart = () => {
+            listening = true;
+            recordBtn.textContent = '⏹️ Detener';
+            updateStatus('Escuchando... habla ahora.');
+        };
+
+        recognition.onresult = (event) => {
+            const transcript = Array.from(event.results)
+                .map(r => r[0].transcript)
+                .join('');
+
+            // Reemplazar el texto con el resultado actual
+            textoArea.value = transcript;
+        };
+
+        recognition.onerror = (event) => {
+            updateStatus('Error: ' + (event.error || 'desconocido'));
+        };
+
+        recognition.onend = () => {
+            listening = false;
+            recordBtn.textContent = '🎙️ Grabar voz';
+            updateStatus('Dictado detenido. Pulsa el botón para grabar de nuevo.');
+        };
+
+        recognition.start();
+    }
+
+    function stopRecognition() {
+        if (recognition) {
+            recognition.stop();
+        }
+    }
+
+    recordBtn.addEventListener('click', () => {
+        if (listening) {
+            stopRecognition();
+        } else {
+            startRecognition();
+        }
+    });
+
+    function updateSpeakStatus(msg) {
+        speakStatus.textContent = msg;
+    }
+
+    const languageVoiceMap = {
+        'es': 'es-ES',
+        'en': 'en-US',
+        'fr': 'fr-FR',
+        'de': 'de-DE',
+        'pt': 'pt-PT',
+        'it': 'it-IT',
+        'nl': 'nl-NL',
+        'ja': 'ja-JP',
+        'ko': 'ko-KR',
+        'zh-Hans': 'zh-CN',
+        'zh-Hant': 'zh-TW',
+        'ru': 'ru-RU'
+    };
+
+    function getVoiceForLang(lang) {
+        const voices = window.speechSynthesis.getVoices();
+        if (!voices.length) {
+            return null;
+        }
+
+        const normalized = lang.toLowerCase();
+        const exact = voices.find(v => v.lang.toLowerCase() === normalized);
+        if (exact) return exact;
+
+        // Match by primary language (e.g., 'es' matches 'es-ES').
+        const primary = normalized.split('-')[0];
+        const starts = voices.find(v => v.lang.toLowerCase().startsWith(primary));
+        if (starts) return starts;
+
+        // Try matching language codes in voice.name (e.g., 'Spanish', 'Francais').
+        const approx = voices.find(v => v.name.toLowerCase().includes(primary));
+        if (approx) return approx;
+
+        return voices[0];
+    }
+
+    async function playServerTTS(text, lang) {
+        // Fallback server-side TTS (Azure) when browser speech synthesis fails.
+        updateSpeakStatus('Generando audio...');
+
+        try {
+            const body = new URLSearchParams({ texto: text, idioma: lang });
+            const res = await fetch('/tts', { method: 'POST', body });
+            if (!res.ok) {
+                throw new Error('Respuesta del servidor no OK');
+            }
+
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+
+            audio.onended = () => {
+                updateSpeakStatus('Reproducción finalizada.');
+                URL.revokeObjectURL(url);
+            };
+            audio.onerror = () => {
+                updateSpeakStatus('Error al reproducir el audio.');
+                URL.revokeObjectURL(url);
+            };
+
+            updateSpeakStatus('Reproduciendo...');
+            await audio.play();
+        } catch (err) {
+            updateSpeakStatus('Error al generar audio: ' + (err.message || err));
+        }
+    }
+
+    function speakText(text) {
+        if (!text || !text.trim()) {
+            updateSpeakStatus('No hay texto para reproducir.');
+            return;
+        }
+
+        const destCode = destinoSelect.value || 'es';
+        const lang = languageVoiceMap[destCode] || destCode;
+
+        if (!window.speechSynthesis) {
+            updateSpeakStatus('Este navegador no soporta síntesis de voz. Usando servidor...');
+            playServerTTS(text, lang);
+            return;
+        }
+
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.lang = lang;
+
+        const voice = getVoiceForLang(lang);
+        if (voice) {
+            utterance.voice = voice;
+        } else {
+            // If voices aren’t loaded yet, wait and retry once.
+            if (!window.speechSynthesis.getVoices().length) {
+                updateSpeakStatus('Cargando voces...');
+                window.speechSynthesis.onvoiceschanged = () => {
+                    window.speechSynthesis.onvoiceschanged = null;
+                    speakText(text);
+                };
+                return;
+            }
+        }
+
+        utterance.onstart = () => updateSpeakStatus('Reproduciendo...');
+        utterance.onend = () => updateSpeakStatus('Reproducción finalizada.');
+        utterance.onerror = () => {
+            updateSpeakStatus('Error al reproducir el audio. Usando servidor...');
+            playServerTTS(text, lang);
+        };
+
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(utterance);
+    }
+
+    speakBtn.addEventListener('click', () => {
+        const texto = resultadoP.textContent || '';
+        speakText(texto);
+    });
+})();
+</script>
+
+</body>
+</html>
