@@ -9,11 +9,13 @@
 <body>
 
 <main class="app-container">
+    <!-- Cabecera principal -->
     <header class="app-header">
         <h1>Traductor IA</h1>
         <p class="subtitle">Traduce texto y genera audio de forma rápida y profesional.</p>
     </header>
 
+    <!-- Formulario de traducción -->
     <section class="card">
         <form method="POST" class="form">
             <div class="form-row">
@@ -49,6 +51,7 @@
         </form>
     </section>
 
+    <!-- Sección de resultado: muestra el texto traducido y permite reproducirlo -->
     <section class="card output">
         <h2>Resultado</h2>
         <p id="resultado" class="output-text">{{resultado}}</p>
@@ -63,6 +66,7 @@
     </footer>
 </main>
 
+<!-- Script del frontend: reconocimiento, TTS y lógica de UI -->
 <script>
 (function() {
     const recordBtn = document.getElementById('recordBtn');

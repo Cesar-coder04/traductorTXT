@@ -1,4 +1,9 @@
-/* Global base */
+/*
+  Estilos principales de la app.
+  - Colores definidos en variables para facilitar cambios de tema
+  - Layout centrado y responsive
+*/
+
 :root {
   --bg: #0b1018;
   --card: #121c2b;
