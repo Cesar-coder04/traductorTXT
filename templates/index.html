@@ -129,6 +129,7 @@
         'nl': 'nl-NL',
         'ja': 'ja-JP',
         'ko': 'ko-KR',
+        'ar': 'ar-EG',
         'zh-Hans': 'zh-CN',
         'zh-Hant': 'zh-TW',
         'ru': 'ru-RU'
@@ -207,6 +208,16 @@
 
         const voice = getVoiceForLang(lang);
         if (voice) {
+            // If the selected voice language does not match the desired primary language,
+            // fall back to server TTS (more reliable for 'rare' languages).
+            const desiredPrimary = (lang || '').toLowerCase().split('-')[0];
+            const voicePrimary = (voice.lang || '').toLowerCase().split('-')[0];
+            if (desiredPrimary && voicePrimary && desiredPrimary !== voicePrimary) {
+                updateSpeakStatus('Voz local no disponible para este idioma. Usando servidor...');
+                playServerTTS(text, lang);
+                return;
+            }
+
             utterance.voice = voice;
         } else {
             // If voices aren’t loaded yet, wait and retry once.
@@ -218,6 +229,11 @@
                 };
                 return;
             }
+
+            // No voice at all: fallback to server TTS.
+            updateSpeakStatus('No se encontró voz adecuada. Usando servidor...');
+            playServerTTS(text, lang);
+            return;
         }
 
         utterance.onstart = () => updateSpeakStatus('Reproduciendo...');
